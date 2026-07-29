@@ -1,0 +1,338 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>虎币动画 - 资讯详情页</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  background: #111;
+}
+
+.phone-frame {
+  position: relative;
+  width: 375px;
+  height: 812px;
+  overflow: hidden;
+  border-radius: 40px;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+}
+
+.page-bg {
+  width: 375px;
+  height: 812px;
+  display: block;
+}
+
+/* 动画区域: 50x50, 以设计稿中虎币位置为中心 */
+.anim-stage {
+  position: absolute;
+  bottom: 37px;
+  right: 9px;
+  width: 50px;
+  height: 50px;
+  perspective: 200px;
+  pointer-events: none;
+}
+
+.coin-mover {
+  position: absolute;
+  left: 50%;
+  top: 0;
+  width: 24px;
+  height: 24px;
+  margin-left: -12px;
+  will-change: transform;
+}
+
+.coin-spinner {
+  width: 100%;
+  height: 100%;
+  will-change: transform;
+  transform-style: preserve-3d;
+}
+
+.coin-face {
+  width: 100%;
+  height: 100%;
+  position: relative;
+  overflow: hidden;
+  clip-path: circle(48% at 50% 50%);
+}
+
+.coin-face img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.shine {
+  position: absolute;
+  top: 0;
+  left: -15%;
+  width: 45%;
+  height: 100%;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(255, 235, 170, 0) 20%,
+    rgba(255, 240, 190, 0.5) 50%,
+    rgba(255, 235, 170, 0) 80%,
+    transparent 100%
+  );
+  transform: skewX(-12deg);
+  opacity: 0;
+  pointer-events: none;
+  will-change: left, opacity;
+}
+
+.sparkle {
+  position: absolute;
+  width: 6px;
+  height: 6px;
+  pointer-events: none;
+  opacity: 0;
+  z-index: 10;
+}
+
+.sparkle::before,
+.sparkle::after {
+  content: '';
+  position: absolute;
+  background: radial-gradient(ellipse at center, rgba(255, 252, 235, 0.95) 0%, rgba(255, 252, 235, 0) 70%);
+}
+
+.sparkle::before {
+  width: 100%;
+  height: 15%;
+  top: 50%;
+  left: 0;
+  transform: translateY(-50%);
+}
+
+.sparkle::after {
+  width: 15%;
+  height: 100%;
+  left: 50%;
+  top: 0;
+  transform: translateX(-50%);
+}
+
+.share-icon {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 24px;
+  height: 24px;
+  transform: translate(-50%, -50%);
+  opacity: 0;
+  transition: opacity 300ms ease-in;
+  pointer-events: none;
+}
+
+.controls {
+  position: fixed;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 100;
+}
+
+.controls button {
+  padding: 8px 20px;
+  border: 1px solid rgba(255,255,255,0.15);
+  background: rgba(255,255,255,0.05);
+  color: #fff;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+}
+.controls button:hover { background: rgba(255,255,255,0.1); }
+</style>
+</head>
+<body>
+<div class="phone-frame">
+  <img class="page-bg" src="bg.png" width="375" height="812" alt="资讯详情页">
+
+  <div class="anim-stage" id="stage">
+    <div class="coin-mover" id="mover">
+      <div class="coin-spinner" id="spinner">
+        <div class="coin-face">
+          <img src="coin.png" alt="虎币">
+          <div class="shine" id="shine"></div>
+        </div>
+      </div>
+    </div>
+    <img class="share-icon" id="shareIcon" src="share-icon.svg" alt="分享">
+  </div>
+</div>
+
+<div class="controls">
+  <button onclick="play()">重播</button>
+</div>
+
+<script>
+const mover = document.getElementById('mover');
+const spinner = document.getElementById('spinner');
+const shine = document.getElementById('shine');
+const shareIcon = document.getElementById('shareIcon');
+
+const TOP = 0;
+const BOTTOM = 26; // 50 - 24 = 26
+const CENTER = 13;
+
+const segments = [
+  { from: TOP, to: BOTTOM, duration: 600, easing: easeInQuad, rStart: 0, rEnd: 0 },
+  { from: BOTTOM, to: TOP, duration: 680, easing: easeOutQuad, rStart: 0, rEnd: 0 },
+  { from: TOP, to: BOTTOM, duration: 600, easing: easeInQuad, rStart: 0, rEnd: 0 },
+  { from: BOTTOM, to: CENTER - 4, duration: 1000, easing: easeOutCubic, rStart: 0, rEnd: -360 },
+  { from: CENTER - 4, to: CENTER, duration: 350, easing: easeInOutQuad, rStart: -360, rEnd: -360 },
+];
+
+const squashSegs = [0, 2];
+const stretchSegs = [1, 3];
+
+function play() {
+  let segIdx = 0;
+  let segStart = null;
+
+  mover.style.transform = `translateY(${TOP}px)`;
+  mover.style.opacity = '1';
+  spinner.style.transform = `rotateY(0deg)`;
+  shine.style.opacity = '0';
+  shine.style.left = '-15%';
+  shareIcon.style.opacity = '0';
+
+  function tick(now) {
+    if (segIdx >= segments.length) {
+      playSweep(false, () => setTimeout(() => {
+        playSweep(false, () => {
+          // 两次扫光后出现星光
+          spawnSparkles();
+          // 星光结束后等1秒，虎币消失，再等1秒，分享图标出现
+          setTimeout(() => {
+            mover.style.transition = 'opacity 300ms ease-out';
+            mover.style.opacity = '0';
+            setTimeout(() => {
+              shareIcon.style.opacity = '1';
+            }, 1000);
+          }, 1000);
+        });
+      }, 180));
+      return;
+    }
+
+    if (segStart === null) segStart = now;
+    const seg = segments[segIdx];
+    const elapsed = now - segStart;
+    let t = Math.min(elapsed / seg.duration, 1);
+    const easedT = seg.easing(t);
+
+    const y = seg.from + (seg.to - seg.from) * easedT;
+    const rot = seg.rStart + (seg.rEnd - seg.rStart) * easedT;
+
+    let scaleX = 1, scaleY = 1;
+    if (squashSegs.includes(segIdx) && t > 0.85) {
+      const sq = (t - 0.85) / 0.15;
+      scaleX = 1 + sq * 0.15;
+      scaleY = 1 - sq * 0.12;
+    }
+    if (stretchSegs.includes(segIdx) && t < 0.15) {
+      const st = 1 - t / 0.15;
+      scaleX = 1 + st * 0.12;
+      scaleY = 1 - st * 0.1;
+    }
+
+    mover.style.transform = `translateY(${y}px) scaleX(${scaleX}) scaleY(${scaleY})`;
+    spinner.style.transform = `rotateY(${rot}deg)`;
+
+    if (t >= 1) {
+      segIdx++;
+      segStart = null;
+    }
+
+    requestAnimationFrame(tick);
+  }
+
+  requestAnimationFrame(tick);
+}
+
+function playSweep(withSparkles, onDone) {
+  shine.style.transition = 'none';
+  shine.style.left = '-15%';
+  shine.style.opacity = '0';
+
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      shine.style.transition = 'left 720ms ease-in-out, opacity 100ms ease-in';
+      shine.style.opacity = '1';
+      shine.style.left = '100%';
+
+      if (withSparkles) spawnSparkles();
+
+      setTimeout(() => {
+        shine.style.transition = 'opacity 160ms ease-out';
+        shine.style.opacity = '0';
+        if (onDone) setTimeout(onDone, 120);
+      }, 640);
+    });
+  });
+}
+
+function spawnSparkles() {
+  const stage = document.getElementById('stage');
+  // 三个闪光点: 左中、右上(最大)、下中
+  const points = [
+    { x: 14, y: 27, size: 15 },
+    { x: 28, y: 18, size: 22 },
+    { x: 24, y: 37, size: 13 },
+  ];
+
+  // 逐个创建，用递归确保依次出现
+  let i = 0;
+  function nextSparkle() {
+    if (i >= points.length) return;
+    const pt = points[i];
+    const size = pt.size;
+    i++;
+
+    const spark = document.createElement('div');
+    spark.className = 'sparkle';
+    spark.style.left = (pt.x - size / 2) + 'px';
+    spark.style.top = (pt.y - size / 2) + 'px';
+    spark.style.width = size + 'px';
+    spark.style.height = size + 'px';
+    stage.appendChild(spark);
+
+    spark.animate([
+      { opacity: 0, transform: 'scale(0)' },
+      { opacity: 1, transform: 'scale(1.2)', offset: 0.2 },
+      { opacity: 1, transform: 'scale(1)', offset: 0.5 },
+      { opacity: 0.5, transform: 'scale(0.5)', offset: 0.8 },
+      { opacity: 0, transform: 'scale(0)' },
+    ], {
+      duration: 750,
+      easing: 'ease-in-out',
+      fill: 'forwards',
+    }).onfinish = () => spark.remove();
+
+    setTimeout(nextSparkle, 450);
+  }
+  nextSparkle();
+}
+
+function easeInQuad(t) { return t * t; }
+function easeOutQuad(t) { return t * (2 - t); }
+function easeOutCubic(t) { return 1 - Math.pow(1 - t, 3); }
+function easeInOutQuad(t) { return t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t; }
+
+play();
+</script>
+</body>
+</html>
